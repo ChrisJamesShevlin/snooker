@@ -183,12 +183,13 @@ class App(tk.Tk):
 
         ttk.Separator(self.colL).pack(fill="x", pady=8)
         ttk.Label(self.colL, text="Season Weights", style="Header.TLabel").pack(anchor="w", pady=(6,4))
-        self.w_wr   = self._slider(self.colL, "Weight: Win rate", 0.80)        # toned down
-        self.w_ppm  = self._slider(self.colL, "Weight: Points per match", 0.80)
-        self.w_b50  = self._slider(self.colL, "Weight: 50+ per match", 0.70)
-        self.w_b100 = self._slider(self.colL, "Weight: 100+ per match", 0.60)
-        self.w_shot = self._slider(self.colL, "Weight: Shot time (faster=better)", 0.60)
-        self.season_scale = self._slider(self.colL, "Season strength scale", 0.80, to=2.0)
+        # UPDATED DEFAULTS
+        self.w_wr   = self._slider(self.colL, "Weight: Win rate", 0.82)        # was 0.80
+        self.w_ppm  = self._slider(self.colL, "Weight: Points per match", 0.70) # was 0.80
+        self.w_b50  = self._slider(self.colL, "Weight: 50+ per match", 0.60)    # was 0.70
+        self.w_b100 = self._slider(self.colL, "Weight: 100+ per match", 0.40)   # was 0.60
+        self.w_shot = self._slider(self.colL, "Weight: Shot time (faster=better)", 0.46)  # was 0.60
+        self.season_scale = self._slider(self.colL, "Season strength scale", 0.72, to=2.0) # was 0.80
 
     # -------- live inputs --------
     def _live_inputs(self):
@@ -215,14 +216,15 @@ class App(tk.Tk):
 
         ttk.Separator(self.colM).pack(fill="x", pady=8)
         ttk.Label(self.colM, text="Live Weights / SDs / Reliability", style="Header.TLabel").pack(anchor="w", pady=(6,4))
-        self.w_pot   = self._slider(self.colM, "Weight: Pot %", 1.00)
-        self.w_st    = self._slider(self.colM, "Weight: Shot time", 0.70)
-        self.w_b50   = self._slider(self.colM, "Weight: 50+ count", 0.60)
-        self.w_b100  = self._slider(self.colM, "Weight: 100+ count", 0.50)
-        self.w_hb    = self._slider(self.colM, "Weight: Highest break", 0.40)
-        self.w_pts   = self._slider(self.colM, "Weight: Points share", 1.20)
-        self.w_shots = self._slider(self.colM, "Weight: Shots share", 0.60)
-        self.w_tot   = self._slider(self.colM, "Weight: Time-on-table share", 0.60)
+        # UPDATED DEFAULTS
+        self.w_pot   = self._slider(self.colM, "Weight: Pot %", 0.52)       # was 1.00
+        self.w_st    = self._slider(self.colM, "Weight: Shot time", 0.44)   # was 0.70
+        self.w_b50   = self._slider(self.colM, "Weight: 50+ count", 0.34)   # was 0.60
+        self.w_b100  = self._slider(self.colM, "Weight: 100+ count", 0.12)  # was 0.50
+        self.w_hb    = self._slider(self.colM, "Weight: Highest break", 0.20) # was 0.40
+        self.w_pts   = self._slider(self.colM, "Weight: Points share", 0.68)  # was 1.20
+        self.w_shots = self._slider(self.colM, "Weight: Shots share", 0.43)    # was 0.60
+        self.w_tot   = self._slider(self.colM, "Weight: Time-on-table share", 0.44) # was 0.60
 
         # SDs (more conservative defaults)
         self.sd_pot  = self._slider(self.colM, "SD: Pot % (pp)", 8.0, to=15.0)
@@ -245,8 +247,9 @@ class App(tk.Tk):
         row = ttk.Frame(self.colM); row.pack(fill="x", pady=2)
         self.cap_on = tk.BooleanVar(value=True)
         ttk.Checkbutton(row, variable=self.cap_on, text="Cap per-frame p to [min, max]").pack(side="left")
-        self.pmin = tk.DoubleVar(value=0.20)
-        self.pmax = tk.DoubleVar(value=0.80)
+        # UPDATED DEFAULTS
+        self.pmin = tk.DoubleVar(value=0.45)  # was 0.20
+        self.pmax = tk.DoubleVar(value=0.66)  # was 0.80
         ttk.Entry(row, textvariable=self.pmin, width=5).pack(side="right")
         ttk.Label(row, text="max").pack(side="right", padx=4)
         ttk.Entry(row, textvariable=self.pmax, width=5).pack(side="right")
