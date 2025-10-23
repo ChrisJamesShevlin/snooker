@@ -4,14 +4,14 @@ import tkinter as tk
 from tkinter import ttk
 
 # ---------- math helpers ----------
-def clip(x, lo, hi): 
+def clip(x, lo, hi):
     return max(lo, min(hi, x))
 
 def logit(p):
     p = clip(p, 1e-6, 1-1e-6)
     return math.log(p/(1-p))
 
-def inv_logit(z): 
+def inv_logit(z):
     return 1/(1+math.exp(-z))
 
 # DP race model: P(match | per-frame p, score a-b, target)
@@ -23,6 +23,24 @@ def match_win_prob(p, a, b, target, memo=None):
     if key in memo: return memo[key]
     memo[key] = p*match_win_prob(p, a+1, b, target, memo) + (1-p)*match_win_prob(p, a, b+1, target, memo)
     return memo[key]
+
+# ---- Prior helpers ----
+def implied_prob_from_odds(o: float) -> float:
+    if o <= 1.0:
+        return 0.999999
+    return clip(1.0 / o, 1e-6, 1-1e-6)
+
+def invert_match_prob_to_pframe(target: int, implied_match_prob: float) -> float:
+    # Binary search per-frame p s.t. match_win_prob(p,0,0,target) ~= implied_match_prob
+    lo, hi = 0.35, 0.80  # reasonable frame edge bracket
+    for _ in range(40):
+        mid = (lo + hi) / 2.0
+        pm = match_win_prob(mid, 0, 0, target)
+        if pm < implied_match_prob:
+            lo = mid
+        else:
+            hi = mid
+    return clip((lo + hi) / 2.0, 1e-3, 1-1e-3)
 
 # ---------- modelling ----------
 def season_strength(points_scored, matches_played, win_rate, avg_shot_time, b50, b100,
@@ -47,7 +65,7 @@ def live_boost(potA, potB, stA, stB, b50A, b50B, b100A, b100B, hbA, hbB,
                w_pot, w_st, w_b50, w_b100, w_hb, w_pts, w_shots, w_tot,
                sd_pot, sd_st, sd_b50, sd_b100, sd_hb, sd_pts_share, sd_shots_share, sd_tot_share,
                k_shots, beta):
-    def z(diff, sd): 
+    def z(diff, sd):
         return clip(diff/max(sd,1e-9), -3.0, 3.0)
 
     shots_tot = max(1, shotsA + shotsB)
@@ -105,7 +123,7 @@ class App(tk.Tk):
         # Columns
         self.colL = ttk.Labelframe(self.root, text="Season (pre-match) — from 'Season' screenshot", padding=10)
         self.colM = ttk.Labelframe(self.root, text="In-Play — from 'Match' screenshot", padding=10)
-        self.colR = ttk.Labelframe(self.root, text="Outputs, Score & Book odds", padding=10)
+        self.colR = ttk.Labelframe(self.root, text="Outputs, Score & Prices", padding=10)
         self.colL.grid(row=0, column=0, sticky="nsew", padx=(0,8))
         self.colM.grid(row=0, column=1, sticky="nsew", padx=8)
         self.colR.grid(row=0, column=2, sticky="nsew", padx=(8,0))
@@ -183,50 +201,57 @@ class App(tk.Tk):
 
         ttk.Separator(self.colL).pack(fill="x", pady=8)
         ttk.Label(self.colL, text="Season Weights", style="Header.TLabel").pack(anchor="w", pady=(6,4))
-        # UPDATED DEFAULTS
-        self.w_wr   = self._slider(self.colL, "Weight: Win rate", 0.82)        # was 0.80
-        self.w_ppm  = self._slider(self.colL, "Weight: Points per match", 0.70) # was 0.80
-        self.w_b50  = self._slider(self.colL, "Weight: 50+ per match", 0.60)    # was 0.70
-        self.w_b100 = self._slider(self.colL, "Weight: 100+ per match", 0.40)   # was 0.60
-        self.w_shot = self._slider(self.colL, "Weight: Shot time (faster=better)", 0.46)  # was 0.60
-        self.season_scale = self._slider(self.colL, "Season strength scale", 0.72, to=2.0) # was 0.80
+        self.w_wr   = self._slider(self.colL, "Weight: Win rate", 0.82)
+        self.w_ppm  = self._slider(self.colL, "Weight: Points per match", 0.70)
+        self.w_b50  = self._slider(self.colL, "Weight: 50+ per match", 0.60)
+        self.w_b100 = self._slider(self.colL, "Weight: 100+ per match", 0.40)
+        self.w_shot = self._slider(self.colL, "Weight: Shot time (faster=better)", 0.46)
+        self.season_scale = self._slider(self.colL, "Season strength scale", 0.72, to=2.0)
 
-    # -------- live inputs --------
+    # -------- live inputs (ordered like your screenshot) --------
     def _live_inputs(self):
         ttk.Label(self.colM, text="Player A — Live (Match tab)", style="Header.TLabel").pack(anchor="w", pady=(0,4))
-        self.A_pot   = self._ef(self.colM, "Pot rate %:")
-        self.A_stL   = self._ef(self.colM, "Avg shot time (s):")
-        self.A_b50L  = self._ef(self.colM, "50+ breaks:")
-        self.A_b100L = self._ef(self.colM, "100+ breaks:")
-        self.A_hb    = self._ef(self.colM, "Highest break:")
+        # 1) Total Match Points
         self.A_pts   = self._ef(self.colM, "Total match points:")
+        # 2) Average Shot Time
+        self.A_stL   = self._ef(self.colM, "Average shot time (s):")
+        # 3) Pot Rate
+        self.A_pot   = self._ef(self.colM, "Pot rate %:")
+        # 4) 50+ Breaks
+        self.A_b50L  = self._ef(self.colM, "50+ breaks:")
+        # 5) 100+ Breaks
+        self.A_b100L = self._ef(self.colM, "100+ breaks:")
+        # 6) Highest Break
+        self.A_hb    = self._ef(self.colM, "Highest break:")
+        # 7) Shots Taken
         self.A_shots = self._ef(self.colM, "Shots taken:")
+        # 8) Time On Table
         self.A_tot   = self._ef(self.colM, "Time on table %:")
 
         ttk.Separator(self.colM).pack(fill="x", pady=6)
         ttk.Label(self.colM, text="Player B — Live (Match tab)", style="Header.TLabel").pack(anchor="w", pady=(6,4))
+        self.B_pts   = self._ef(self.colM, "Total match points:")
+        self.B_stL   = self._ef(self.colM, "Average shot time (s):")
         self.B_pot   = self._ef(self.colM, "Pot rate %:")
-        self.B_stL   = self._ef(self.colM, "Avg shot time (s):")
         self.B_b50L  = self._ef(self.colM, "50+ breaks:")
         self.B_b100L = self._ef(self.colM, "100+ breaks:")
         self.B_hb    = self._ef(self.colM, "Highest break:")
-        self.B_pts   = self._ef(self.colM, "Total match points:")
         self.B_shots = self._ef(self.colM, "Shots taken:")
         self.B_tot   = self._ef(self.colM, "Time on table %:")
 
         ttk.Separator(self.colM).pack(fill="x", pady=8)
         ttk.Label(self.colM, text="Live Weights / SDs / Reliability", style="Header.TLabel").pack(anchor="w", pady=(6,4))
-        # UPDATED DEFAULTS
-        self.w_pot   = self._slider(self.colM, "Weight: Pot %", 0.52)       # was 1.00
-        self.w_st    = self._slider(self.colM, "Weight: Shot time", 0.44)   # was 0.70
-        self.w_b50   = self._slider(self.colM, "Weight: 50+ count", 0.34)   # was 0.60
-        self.w_b100  = self._slider(self.colM, "Weight: 100+ count", 0.12)  # was 0.50
-        self.w_hb    = self._slider(self.colM, "Weight: Highest break", 0.20) # was 0.40
-        self.w_pts   = self._slider(self.colM, "Weight: Points share", 0.68)  # was 1.20
-        self.w_shots = self._slider(self.colM, "Weight: Shots share", 0.43)    # was 0.60
-        self.w_tot   = self._slider(self.colM, "Weight: Time-on-table share", 0.44) # was 0.60
+        # Conservative defaults
+        self.w_pot   = self._slider(self.colM, "Weight: Pot %", 0.52)
+        self.w_st    = self._slider(self.colM, "Weight: Shot time", 0.44)
+        self.w_b50   = self._slider(self.colM, "Weight: 50+ count", 0.34)
+        self.w_b100  = self._slider(self.colM, "Weight: 100+ count", 0.12)
+        self.w_hb    = self._slider(self.colM, "Weight: Highest break", 0.20)
+        self.w_pts   = self._slider(self.colM, "Weight: Points share", 0.68)
+        self.w_shots = self._slider(self.colM, "Weight: Shots share", 0.43)
+        self.w_tot   = self._slider(self.colM, "Weight: Time-on-table share", 0.44)
 
-        # SDs (more conservative defaults)
+        # SDs
         self.sd_pot  = self._slider(self.colM, "SD: Pot % (pp)", 8.0, to=15.0)
         self.sd_st   = self._slider(self.colM, "SD: Shot time (s)", 2.2, to=6.0)
         self.sd_b50  = self._slider(self.colM, "SD: 50+ diff (count)", 1.8, to=5.0)
@@ -242,18 +267,19 @@ class App(tk.Tk):
 
         ttk.Separator(self.colM).pack(fill="x", pady=8)
         ttk.Label(self.colM, text="Realism guards", style="Header.TLabel").pack(anchor="w", pady=(6,4))
-        self.lambda_shrink = self._slider(self.colM, "Realism shrink λ (0–1)", 0.70, to=1.0, res=0.01)
-        # cap toggle + min/max
+        self.lambda_shrink = self._slider(self.colM, "Realism shrink λ (0–1)", 0.50, to=1.0, res=0.01)  # was 0.70
         row = ttk.Frame(self.colM); row.pack(fill="x", pady=2)
         self.cap_on = tk.BooleanVar(value=True)
         ttk.Checkbutton(row, variable=self.cap_on, text="Cap per-frame p to [min, max]").pack(side="left")
-        # UPDATED DEFAULTS
-        self.pmin = tk.DoubleVar(value=0.45)  # was 0.20
-        self.pmax = tk.DoubleVar(value=0.66)  # was 0.80
+        self.pmin = tk.DoubleVar(value=0.45)
+        self.pmax = tk.DoubleVar(value=0.70)  # was 0.66
         ttk.Entry(row, textvariable=self.pmin, width=5).pack(side="right")
         ttk.Label(row, text="max").pack(side="right", padx=4)
         ttk.Entry(row, textvariable=self.pmax, width=5).pack(side="right")
         ttk.Label(row, text="min").pack(side="right", padx=4)
+
+        # NEW: prior strength slider (equivalent frames)
+        self.n0 = self._slider(self.colM, "Prior strength n₀ (equiv frames)", 80, to=200, res=1)
 
     # -------- outputs & score --------
     def _outputs(self):
@@ -276,6 +302,11 @@ class App(tk.Tk):
         self._kv(self.colR, "Player B fair odds (match):", self.out_oB)
 
         ttk.Separator(self.colR).pack(fill="x", pady=8)
+        ttk.Label(self.colR, text="Pre-match Odds (for prior)", style="Header.TLabel").pack(anchor="w", pady=(0,6))
+        self.preA = self._ef(self.colR, "Pre-match odds A:")
+        self.preB = self._ef(self.colR, "Pre-match odds B:")
+
+        ttk.Separator(self.colR).pack(fill="x", pady=8)
         ttk.Label(self.colR, text="Book Back Odds (match)", style="Header.TLabel").pack(anchor="w", pady=(0,6))
         self.bookA = self._ef(self.colR, "Book back odds A:")
         self.bookB = self._ef(self.colR, "Book back odds B:")
@@ -296,7 +327,7 @@ class App(tk.Tk):
                 matches_played=self._f(self.A_mp, required=True),
                 win_rate=self._f(self.A_wr, required=True),
                 avg_shot_time=self._f(self.A_st, required=True),
-                b50=self._f(self.A_b50, 0.0), 
+                b50=self._f(self.A_b50, 0.0),
                 b100=self._f(self.A_b100, 0.0),
                 w_wr=self.w_wr.get(), w_ppm=self.w_ppm.get(), w_b50=self.w_b50.get(),
                 w_b100=self.w_b100.get(), w_shot=self.w_shot.get(), scale=self.season_scale.get()
@@ -306,14 +337,14 @@ class App(tk.Tk):
                 matches_played=self._f(self.B_mp, required=True),
                 win_rate=self._f(self.B_wr, required=True),
                 avg_shot_time=self._f(self.B_st, required=True),
-                b50=self._f(self.B_b50, 0.0), 
+                b50=self._f(self.B_b50, 0.0),
                 b100=self._f(self.B_b100, 0.0),
                 w_wr=self.w_wr.get(), w_ppm=self.w_ppm.get(), w_b50=self.w_b50.get(),
                 w_b100=self.w_b100.get(), w_shot=self.w_shot.get(), scale=self.season_scale.get()
             )
             base_logit = (SA - SB)
 
-            # Live boost (require core live fields)
+            # Live boost (require core live fields) — MAPPED to new order
             boost = live_boost(
                 potA=self._f(self.A_pot, required=True), potB=self._f(self.B_pot, required=True),
                 stA=self._f(self.A_stL, required=True),  stB=self._f(self.B_stL, required=True),
@@ -330,26 +361,52 @@ class App(tk.Tk):
                 k_shots=int(self.k_shots.get()), beta=self.beta.get()
             )
 
-            # Per-frame probability from season + live
-            total_logit = base_logit + boost
-            p_frame_raw = inv_logit(total_logit)
+            # --- Season + Live to provisional per-frame p (signal)
+            total_logit_signal = base_logit + boost
+            p_frame_signal_raw = inv_logit(total_logit_signal)
 
             # Realism shrink toward 50–50
             lam = clip(self.lambda_shrink.get(), 0.0, 1.0)
-            p_frame = 0.5 + lam * (p_frame_raw - 0.5)
+            p_frame_signal = 0.5 + lam * (p_frame_signal_raw - 0.5)
 
-            # Optional hard cap
+            # Optional hard cap on the SIGNAL (before prior blend)
             if self.cap_on.get():
                 pmin = clip(self.pmin.get(), 0.0, 0.5)
                 pmax = clip(self.pmax.get(), 0.5, 1.0)
                 if pmin > pmax: pmin, pmax = pmax, pmin
-                p_frame = clip(p_frame, pmin, pmax)
+                p_frame_signal = clip(p_frame_signal, pmin, pmax)
 
-            # Score overlay → match probability
+            # --- Build a proper pre-match PRIOR in frame space from pre-match odds
             bestof = self._f(self.bestof, required=True, to_int=True)
+            target = bestof//2 + 1
+
+            preA_str = self.preA.get().strip(); preB_str = self.preB.get().strip()
+            prior_p_frame = None
+            if preA_str and preB_str:
+                try:
+                    oA = float(preA_str); oB = float(preB_str)
+                    impliedA = implied_prob_from_odds(oA)
+                    # (Optional: cross-check with 1 - implied(B) and average)
+                    prior_p_frame = invert_match_prob_to_pframe(target, impliedA)
+                except:
+                    prior_p_frame = None
+
+            # If no valid prior provided, fall back to signal
+            if prior_p_frame is None:
+                prior_p_frame = p_frame_signal
+
+            # --- Evidence weighting: n0 vs. observed shots
+            shots_tot = int(self._f(self.A_shots, required=True) + self._f(self.B_shots, required=True))
+            n0 = int(self.n0.get())
+            w_prior = n0 / max(1.0, n0 + shots_tot)
+            w_signal = 1.0 - w_prior
+
+            # Blend in LOGIT space
+            p_frame = inv_logit(w_prior * logit(prior_p_frame) + w_signal * logit(p_frame_signal))
+
+            # --- Score overlay → match probability
             a_won  = self._f(self.a_won, required=True, to_int=True)
             b_won  = self._f(self.b_won, required=True, to_int=True)
-            target = bestof//2 + 1
             p_match = match_win_prob(p_frame, a_won, b_won, target)
 
             # Outputs
