@@ -24,7 +24,8 @@ This model is designed for live snooker betting—especially **Match Winner** ma
 
 ## 📸 Screenshot
 
-![App Screenshot](cfe1e091-6685-4823-8dd7-7a258febfc44.png)
+<img width="1175" height="1049" alt="image" src="https://github.com/user-attachments/assets/643997a8-3cf0-41b8-a3d6-ae1d77f3d951" />
+
 
 ---
 
