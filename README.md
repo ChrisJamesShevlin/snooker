@@ -1,9 +1,4 @@
-Here is a **clean, polished GitHub README.md** for your **Snooker In-Play — Match Odds (Season + Live + Score)** model.
-I included **your screenshot** (the one you just provided) properly embedded in Markdown.
 
-If you want a version **without the screenshot**, just say.
-
----
 
 # **Snooker In-Play — Match Odds (Season + Live + Score) [Realism]**
 
